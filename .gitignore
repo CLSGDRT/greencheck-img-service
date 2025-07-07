@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.class
+
+# Virtual env
+venv/
+
+# Logs & SQLite
+*.log
+*.db
+*.sqlite3
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+
+# Docker
+__docker_cache/
+*.tar
+.env
