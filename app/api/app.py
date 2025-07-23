@@ -1,3 +1,4 @@
+import uuid
 from flask import Flask, request, jsonify
 from app.models.db import db
 from app.config import get_config
@@ -5,7 +6,8 @@ from dotenv import load_dotenv
 import os
 import boto3
 from werkzeug.utils import secure_filename
-from datetime import datetime
+from datetime import datetime, timezone
+
 import requests
 from app.models.image import Image
 
@@ -35,7 +37,7 @@ def verify_token(auth_header):
         user_service_url = os.getenv("USER_SERVICE_URL", "http://user-service:5000/api/me")
         response = requests.get(user_service_url, headers={"Authorization": f"Bearer {token}"})
         if response.status_code == 200:
-            return response.json()  # attend dict avec infos utilisateur
+            return response.json()  # dict avec infos utilisateur
         else:
             return None
     except Exception:
@@ -59,7 +61,9 @@ def upload_image():
     if file and allowed_file(file.filename):
         original_filename = secure_filename(file.filename)
         ext = original_filename.rsplit('.', 1)[1].lower()
-        filename = f"{user_info['id']}_{int(datetime.utcnow().timestamp())}.{ext}"
+
+        # Utiliser datetime avec timezone aware (UTC)
+        filename = f"{user_info['id']}_{int(datetime.now(timezone.utc).timestamp())}.{ext}"
         content_type = file.content_type
 
         # Lit la taille sans vider le stream
@@ -72,8 +76,8 @@ def upload_image():
         s3 = boto3.client(
             's3',
             endpoint_url=f"http://{os.getenv('MINIO_ENDPOINT', 'localhost:9000')}",
-            aws_access_key_id=os.getenv('MINIO_ACCESS_KEY'),
-            aws_secret_access_key=os.getenv('MINIO_SECRET_KEY'),
+            aws_access_key_id=os.getenv('MINIO_ROOT_USER'),
+            aws_secret_access_key=os.getenv('MINIO_ROOT_PASSWORD'),
         )
 
         try:
@@ -86,24 +90,33 @@ def upload_image():
         except Exception as e:
             return jsonify({"error": "Failed to upload to storage", "details": str(e)}), 500
 
-        # Sauvegarde métadonnées en base
-        image = Image(
-            user_id=user_info['id'],
-            filename=filename,
-            original_filename=original_filename,
-            content_type=content_type,
-            size=size
-        )
-        db.session.add(image)
-        db.session.commit()
+        try:
+            # Convertir user_id en UUID (string UUID valide obligatoire)
+            user_uuid = uuid.UUID(user_info['id'])
+
+            # Création instance Image
+            image = Image(
+                user_id=user_uuid,
+                filename_original=original_filename,
+                filename_stored=filename,
+                content_type=content_type,
+                size=size
+            )
+            db.session.add(image)
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": "Database error", "details": str(e)}), 500
 
         return jsonify({
-            "id": image.id,
-            "filename": image.filename,
-            "original_filename": image.original_filename,
+            "id": str(image.id),
+            "filename_original": image.filename_original,
+            "filename_stored": image.filename_stored,
             "content_type": image.content_type,
             "size": image.size,
-            "created_at": image.created_at.isoformat()
+            "upload_date": image.upload_date.isoformat(),
+            "user_id": str(image.user_id),
+            "status": image.status.value
         }), 201
 
     return jsonify({"error": "Invalid file type"}), 400
@@ -112,4 +125,5 @@ def upload_image():
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
-    app.run(host="0.0.0.0", port=5002)
+    app.logger.setLevel('DEBUG')  # active les logs DEBUG
+    app.run(host="0.0.0.0", port=5002, debug=True)

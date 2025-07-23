@@ -1,11 +1,12 @@
+import uuid
 import io
 import pytest
+from unittest.mock import patch, MagicMock
 from app.api.app import app, db, Image
 import sys
 import os
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 
 @pytest.fixture
 def client():
@@ -15,11 +16,18 @@ def client():
         yield app.test_client()
         db.drop_all()
 
-def test_upload_image_success(client, monkeypatch):
-    # Mock verify_token pour simuler un utilisateur connecté
-    def fake_verify_token(auth_header):
-        return {'id': 'user123', 'email': 'test@example.com'}
+def fake_verify_token(auth_header):
+    # UUID valide simulé
+    return {'id': str(uuid.uuid4()), 'email': 'test@example.com'}
 
+@patch('app.api.app.boto3.client')
+def test_upload_image_success(mock_boto_client, client, monkeypatch):
+    # Mock boto3 S3 client upload_fileobj method
+    mock_s3 = MagicMock()
+    mock_s3.upload_fileobj.return_value = None
+    mock_boto_client.return_value = mock_s3
+
+    # Mock verify_token to simulate authenticated user with UUID id
     monkeypatch.setattr('app.api.app.verify_token', fake_verify_token)
 
     data = {
@@ -31,11 +39,11 @@ def test_upload_image_success(client, monkeypatch):
     assert response.status_code == 201
     json_data = response.get_json()
     assert 'id' in json_data
-    assert json_data['original_filename'] == 'test.jpg'
+    assert json_data['filename_original'] == 'test.jpg'
 
 def test_upload_no_file(client, monkeypatch):
     def fake_verify_token(auth_header):
-        return {'id': 'user123'}
+        return {'id': str(uuid.uuid4())}
 
     monkeypatch.setattr('app.api.app.verify_token', fake_verify_token)
 
