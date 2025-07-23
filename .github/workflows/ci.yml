@@ -1,0 +1,35 @@
+name: CI - img-service
+
+on: [push, pull_request]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install -r requirements.txt
+
+      - name: Lint code
+        run: |
+          pip install flake8
+          flake8 .
+
+      - name: Run tests
+        run: |
+          pip install pytest pytest-cov
+          pytest --cov=. tests/
+
+      - name: Build Docker image
+        run: docker build -t greencheck/img-service .

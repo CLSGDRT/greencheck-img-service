@@ -1,19 +1,18 @@
-from flask import Flask
+from flask import Flask, request, redirect, url_for, jsonify
 from app.models.db import db
-from app.config import Config
+from app.config import get_config 
+from dotenv import load_dotenv
+import os
 
-def create_app():
-    app = Flask(__name__)
-    app.config.from_object(Config)
+load_dotenv()
 
-    db.init_app(app)
+app = Flask(__name__)
+app.config.from_object(get_config()) 
 
-    @app.route("/")
-    def index():
-        return "Hello from img-service!"
+# Initialisation de la base de données (SQLAlchemy)
+db.init_app(app)
 
-    return app
+
 
 if __name__ == "__main__":
-    app = create_app()
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5002)
