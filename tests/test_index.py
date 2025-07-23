@@ -17,36 +17,28 @@ def client():
         db.drop_all()
 
 def fake_verify_token(auth_header):
-    # UUID valide simulé
-    return {'id': str(uuid.uuid4()), 'email': 'test@example.com'}
+    return {'sub': str(uuid.uuid4()), 'email': 'test@example.com'}
 
 @patch('app.api.app.boto3.client')
 def test_upload_image_success(mock_boto_client, client, monkeypatch):
-    # Mock boto3 S3 client upload_fileobj method
     mock_s3 = MagicMock()
     mock_s3.upload_fileobj.return_value = None
     mock_boto_client.return_value = mock_s3
 
-    # Mock verify_token to simulate authenticated user with UUID id
-    monkeypatch.setattr('app.api.app.verify_token', fake_verify_token)
+    monkeypatch.setattr('app.api.app.jwt_verifier.verify_token', fake_verify_token)
 
     data = {
         'file': (io.BytesIO(b'mock image data'), 'test.jpg')
     }
 
     response = client.post('/upload', content_type='multipart/form-data', data=data)
-
     assert response.status_code == 201
     json_data = response.get_json()
     assert 'id' in json_data
     assert json_data['filename_original'] == 'test.jpg'
 
 def test_upload_no_file(client, monkeypatch):
-    def fake_verify_token(auth_header):
-        return {'id': str(uuid.uuid4())}
-
-    monkeypatch.setattr('app.api.app.verify_token', fake_verify_token)
-
+    monkeypatch.setattr('app.api.app.jwt_verifier.verify_token', fake_verify_token)
     response = client.post('/upload')
     assert response.status_code == 400
     assert response.get_json()['error'] == 'No file part'
@@ -55,3 +47,57 @@ def test_upload_unauthorized(client):
     response = client.post('/upload')
     assert response.status_code == 401
     assert response.get_json()['error'] == 'Unauthorized'
+
+@patch('app.api.app.boto3.client')
+def test_get_images_success(mock_boto_client, client, monkeypatch):
+    mock_s3 = MagicMock()
+    mock_boto_client.return_value = mock_s3
+
+    user_id = uuid.uuid4()
+
+    with app.app_context():
+        image = Image(
+            id=uuid.uuid4(),
+            user_id=user_id,
+            filename_original='img.jpg',
+            filename_stored='uuid.jpg',
+            content_type='image/jpeg',
+            size=1234
+        )
+        db.session.add(image)
+        db.session.commit()
+
+    monkeypatch.setattr('app.api.app.jwt_verifier.verify_token', lambda h: {'sub': str(user_id)})
+
+    response = client.get('/images')
+    assert response.status_code == 200
+    json_data = response.get_json()
+    assert isinstance(json_data, list)
+    assert json_data[0]['filename_original'] == 'img.jpg'
+
+@patch('app.api.app.boto3.client')
+def test_delete_image_success(mock_boto_client, client, monkeypatch):
+    mock_s3 = MagicMock()
+    mock_s3.delete_object.return_value = None
+    mock_boto_client.return_value = mock_s3
+
+    user_id = uuid.uuid4()
+    image_id = uuid.uuid4()
+
+    with app.app_context():
+        image = Image(
+            id=image_id,
+            user_id=user_id,
+            filename_original='img.jpg',
+            filename_stored='uuid.jpg',
+            content_type='image/jpeg',
+            size=1234
+        )
+        db.session.add(image)
+        db.session.commit()
+
+    monkeypatch.setattr('app.api.app.jwt_verifier.verify_token', lambda h: {'sub': str(user_id)})
+
+    response = client.delete(f'/images/{image_id}')
+    assert response.status_code == 200
+    assert response.get_json()['message'] == 'Image deleted successfully'

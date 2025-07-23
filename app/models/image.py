@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, DateTime, Integer, ForeignKey, Enum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -22,7 +22,7 @@ class Image(db.Model):
     filename_stored = Column(String(255), nullable=False, unique=True)
     content_type = Column(String(50), nullable=False)
     size = Column(Integer, nullable=False)
-    upload_date = Column(DateTime, default=datetime.utcnow, nullable=False)
+    upload_date = Column(DateTime, default=datetime.now(timezone.utc), nullable=False)
     
     user_id = Column(UUID(as_uuid=True), nullable=False)  # Référence vers le user-service
     diagnosis_id = Column(UUID(as_uuid=True), nullable=True)  # Référence future
