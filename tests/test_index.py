@@ -1,15 +1,44 @@
+import io
 import pytest
-from app.api.app import create_app
+from app.api.app import app, db, Image
 
+@pytest.fixture
+def client():
+    app.config.from_object('app.config.TestingConfig')
+    with app.app_context():
+        db.create_all()
+        yield app.test_client()
+        db.drop_all()
 
-print("Hello world")
-# @pytest.fixture
-# def client():
-#     app = create_app()
-#     app.config['TESTING'] = True
-#     return app.test_client()
+def test_upload_image_success(client, monkeypatch):
+    # Mock verify_token pour simuler un utilisateur connecté
+    def fake_verify_token(auth_header):
+        return {'id': 'user123', 'email': 'test@example.com'}
 
-# def test_index(client):
-#     response = client.get("/")
-#     assert response.status_code == 200
-#     assert b"Hello from img-service" in response.data
+    monkeypatch.setattr('app.api.app.verify_token', fake_verify_token)
+
+    data = {
+        'file': (io.BytesIO(b'mock image data'), 'test.jpg')
+    }
+
+    response = client.post('/upload', content_type='multipart/form-data', data=data)
+
+    assert response.status_code == 201
+    json_data = response.get_json()
+    assert 'id' in json_data
+    assert json_data['original_filename'] == 'test.jpg'
+
+def test_upload_no_file(client, monkeypatch):
+    def fake_verify_token(auth_header):
+        return {'id': 'user123'}
+
+    monkeypatch.setattr('app.api.app.verify_token', fake_verify_token)
+
+    response = client.post('/upload')
+    assert response.status_code == 400
+    assert response.get_json()['error'] == 'No file part'
+
+def test_upload_unauthorized(client):
+    response = client.post('/upload')
+    assert response.status_code == 401
+    assert response.get_json()['error'] == 'Unauthorized'

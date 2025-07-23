@@ -2,12 +2,46 @@ version: '3.8'
 
 services:
   img-service:
-    build: .
-    container_name: img-service
+    build:
+      context: ./img-service
     ports:
-      - "5000:5000"
-    env_file:
-      - .env
+      - "5001:5000"
+    environment:
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - MINIO_BUCKET=${MINIO_BUCKET}
+    depends_on:
+      - minio
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000"  # S3 API
+      - "9001:9001"  # Web UI
     volumes:
-      - ./database:/app/database
-    restart: unless-stopped
+      - minio_data:/data
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":9001"
+
+  createbuckets:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+        sleep 5;
+        mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+        mc mb -p local/${MINIO_BUCKET};
+        mc policy set public local/${MINIO_BUCKET};
+        exit 0;
+      "
+
+volumes:
+  minio_data:
+
+env_file:
+  - .env

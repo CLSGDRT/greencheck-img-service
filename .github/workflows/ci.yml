@@ -1,42 +1,44 @@
-name: CI - user-service
-on: [push, pull_request]
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
 
 jobs:
-  build-test:
+  test:
     runs-on: ubuntu-latest
-    
-    env:
-      FLASK_ENV: testing
-      SECRET_KEY: test-secret-key
-      JWT_SECRET_KEY: test-jwt-secret
-      # Variables OAuth (optionnelles pour les tests)
-      GOOGLE_CLIENT_ID: fake-client-id
-      GOOGLE_CLIENT_SECRET: fake-client-secret
-    
+    strategy:
+      matrix:
+        python-version: [3.12]
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v3
-        
-      - name: Set up Python
+
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
-          
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
       - name: Install dependencies
         run: |
-          python -m venv venv
-          source venv/bin/activate
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov
-          
-      - name: Create database directory
-        run: mkdir -p database
-        
+
       - name: Run tests
+        env:
+          FLASK_ENV: testing
+          DATABASE_URL: "sqlite:///:memory:"  # test en mémoire pour isolation et rapidité
+          # Variables MinIO absentes ici pour ne pas exposer
         run: |
-          source venv/bin/activate
-          pytest --cov=. tests/
-          
-      - name: Build Docker image
-        run: docker build -t greencheck/img-service .
+          pytest tests/ --maxfail=1 --disable-warnings -v

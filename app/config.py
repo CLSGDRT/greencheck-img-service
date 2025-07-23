@@ -9,7 +9,6 @@ class Config:
     
     @staticmethod
     def get_database_path():
-        # Utilise le répertoire du fichier config comme base
         base_dir = os.path.abspath(os.path.dirname(__file__))
         return os.path.join(base_dir, '..', 'database', 'img-service.db')
     
