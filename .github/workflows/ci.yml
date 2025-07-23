@@ -38,7 +38,7 @@ jobs:
       - name: Run tests
         env:
           FLASK_ENV: testing
-          DATABASE_URL: "sqlite:///:memory:"  # test en mémoire pour isolation et rapidité
-          # Variables MinIO absentes ici pour ne pas exposer
+          DATABASE_URL: "sqlite:///:memory:"  
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           pytest tests/ --maxfail=1 --disable-warnings -v
